@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useAuth } from '../state/store'
 import { useNavigate } from 'react-router-dom'
 import logo from '../assets/logo-sumakey.png'
+import { api } from '../lib/api'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { refreshMe } = useAuth() // usamos refreshMe si existe
   const navigate = useNavigate()
 
   const [email, setEmail] = useState('')
@@ -17,10 +18,31 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      await login({ email: email.trim(), password })
-      navigate('/dashboard') // ⬅️ redirige tras iniciar sesión
+      // ✅ POST explícito al backend
+      const res = await api<{ token: string; business?: any; error?: string }>(
+        '/api/auth/login',
+        { method: 'POST', body: { email: email.trim(), password } }
+      )
+
+      if (!res || !res.token) {
+        throw new Error(res?.error || 'Respuesta inválida del servidor')
+      }
+
+      // ✅ guardamos token para que el store/headers lo cojan
+      localStorage.setItem('token', res.token)
+      if (res.business) {
+        localStorage.setItem('sumakey:business', JSON.stringify(res.business))
+      }
+
+      // ✅ intenta refrescar sesión en el store (si existe)
+      try {
+        await refreshMe?.()
+      } catch {}
+
+      // ✅ navega al dashboard
+      navigate('/dashboard', { replace: true })
     } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión')
+      setError(err?.message || 'Error al iniciar sesión')
     } finally {
       setLoading(false)
     }
@@ -29,6 +51,7 @@ export default function Login() {
   return (
     <div
       className="min-h-[calc(100vh-80px)] flex items-center justify-center bg-cover bg-center"
+      // 👇 si esta ruta falla en producción, cámbiala por un import y úsalo como <img src={bg} />
       style={{ backgroundImage: `url('/src/assets/bg-auth.png')` }}
     >
       <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl p-8 w-full max-w-md">
