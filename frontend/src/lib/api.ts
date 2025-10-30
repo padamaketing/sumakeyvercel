@@ -1,9 +1,9 @@
-// Usa VITE_API_BASE si existe; si no, fallback a Railway (evita 404 de Vercel)
-export const BASE: string =
-  (import.meta as any).env?.VITE_API_BASE ||
-  'https://sumakeyvercel-production.up.railway.app'
+// frontend/src/lib/api.ts
 
-// Helper genérico: admite pasar body como objeto plano o RequestInit completo
+// URL base del backend
+export const BASE =
+  'https://sumakeyvercel-production.up.railway.app' // 👈 usa SIEMPRE esta directa
+
 function isPlainObject(v: any) {
   return v != null && typeof v === 'object' &&
          !(v instanceof FormData) && !(v instanceof Blob) && !(v instanceof ArrayBuffer)
