@@ -37,7 +37,6 @@ export function createServer() {
 
   const corsOptions: cors.CorsOptions = {
     origin(origin, cb) {
-      // Permite peticiones sin Origin (curl, health checks)
       if (!origin) return cb(null, true)
       if (allowList.length === 0 || allowList.includes(origin)) return cb(null, true)
       return cb(new Error(`CORS blocked: ${origin}`), false)
@@ -108,6 +107,23 @@ export function createServer() {
       console.log(`[boot] Mounted ${name} at ${path}`)
     } else {
       console.error(`[boot] SKIPPED mounting ${name} at ${path} because it is ${typeof router}`)
+    }
+  })
+
+  // ───────────────── **NUEVO**: Auth ME (protegidísima)
+  app.get('/api/auth/me', requireAuth as any, async (req: any, res) => {
+    try {
+      const businessId = req.user.businessId
+      const { rows } = await query(
+        `select id, name, slug, reward_name, reward_threshold
+           from businesses
+          where id = $1`,
+        [businessId]
+      )
+      if (!rows[0]) return res.status(404).json({ error: 'Business not found' })
+      res.json({ business: rows[0] })
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'me error' })
     }
   })
 
