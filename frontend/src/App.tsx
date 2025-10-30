@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link, Route, Routes, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './state/store'
 import logo from './assets/logo-sumakey.png' // LOGO
@@ -116,13 +117,21 @@ function Nav() {
 }
 
 export default function App() {
-  // ⬇️ NUEVO: rutas sin shell (Nav/Footer) → públicas puras
   const { pathname } = useLocation()
   const isShelllessRoute = /^\/(public|qr)\//.test(pathname)
+  const { token, business, refreshMe } = useAuth()
+
+  // ✅ NUEVO: refresca el negocio si hay token pero no está cargado
+  useEffect(() => {
+    if (token && !business) {
+      refreshMe().catch(() => {
+        console.warn('No se pudo refrescar negocio (token inválido o expirado)')
+      })
+    }
+  }, [token, business, refreshMe])
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col">
-      {/* Ocultamos Nav y Footer en /public/* y /qr/* */}
       {!isShelllessRoute && <Nav />}
 
       <div className={isShelllessRoute ? '' : 'flex-1'}>
@@ -218,7 +227,6 @@ export default function App() {
               </RequireAuth>
             }
           />
-          {/* 🔥 Eliminadas rutas de enlaces y textos */}
           <Route
             path="/restaurante/qr-alta"
             element={
