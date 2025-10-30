@@ -1,10 +1,5 @@
-// frontend/src/lib/api.ts
-
-// 🔧 URL base del backend (configúralo en Vercel → Environment Variables)
-export const BASE =
-  (import.meta as any).env?.VITE_API_BASE ||
-  (typeof window !== 'undefined' && (window as any).__API_BASE__) ||
-  'http://localhost:4000' // fallback en local
+// URL base del backend (forzada a Railway para prod)
+export const BASE = 'https://sumakeyvercel-production.up.railway.app'
 
 function isPlainObject(v: any) {
   return (
@@ -18,16 +13,11 @@ function isPlainObject(v: any) {
 
 type ApiInit = RequestInit & { body?: any }
 
-/**
- * api('/api/restaurant/program', { method: 'GET' }, token)
- * api('/api/restaurant/program', { foo: 'bar' }, token)  // => POST JSON
- */
 export async function api<T = any>(
   path: string,
   initOrBody?: ApiInit | any,
   token?: string
 ): Promise<T> {
-  // Si el 2º argumento parece un RequestInit -> úsalo tal cual; si no, lo tratamos como body de POST
   let init: ApiInit =
     initOrBody && (initOrBody.method || initOrBody.headers)
       ? (initOrBody as ApiInit)
@@ -43,28 +33,19 @@ export async function api<T = any>(
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 
-  // Serializa body solo si es objeto plano y el método admite body
   let body: any = init.body
   if (method !== 'GET' && method !== 'HEAD') {
     body = isPlainObject(init.body) ? JSON.stringify(init.body) : init.body
   } else {
-    // Nunca mandes body en GET/HEAD
     body = undefined
   }
 
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    method,
-    headers,
-    body,
-  })
+  const res = await fetch(`${BASE}${path}`, { ...init, method, headers, body })
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(text || `HTTP ${res.status} on ${path}`)
   }
-
-  // Si no hay JSON, devuelve undefined
   try {
     return (await res.json()) as T
   } catch {
