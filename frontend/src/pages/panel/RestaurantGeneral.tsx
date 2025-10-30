@@ -23,12 +23,16 @@ export default function RestaurantGeneral() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api<{business: any}>('/api/restaurant/settings', {}, token || undefined)
+        const res = await api<{ business: any }>(
+          '/api/restaurant/settings',
+          {},
+          token || undefined
+        )
         const b = res.business
         setMode((b.card_expiration_mode || 'none') as Mode)
         setFixedDate(b.card_expiration_date || '')
         setDaysFromSignup(b.card_expiration_days || 30)
-      } catch (e:any) {
+      } catch (e: any) {
         console.error(e)
         setErrorMsg(e.message || 'No se pudo cargar la configuración')
       }
@@ -41,16 +45,28 @@ export default function RestaurantGeneral() {
       const body: any = { mode }
       if (mode === 'fixed_date') body.date = fixedDate
       if (mode === 'days_from_signup') body.days = daysFromSignup
-      await api('/api/restaurant/expiration', {
-        method: 'POST',
-        body: JSON.stringify(body)
-      }, token || undefined)
+
+      // ⬇️ Enviamos OBJETO (el helper ya hace JSON.stringify)
+      const res = await api<{ ok: boolean; business: any }>(
+        '/api/restaurant/expiration',
+        { method: 'POST', body },
+        token || undefined
+      )
+
+      // Sincroniza estado con lo que devuelve el backend
+      const b = res.business
+      if (b) {
+        setMode((b.card_expiration_mode || 'none') as Mode)
+        setFixedDate(b.card_expiration_date || '')
+        setDaysFromSignup(b.card_expiration_days || 30)
+      }
+
       setSavedMsg('Guardado correctamente ✅')
-    } catch (e:any) {
+    } catch (e: any) {
       setErrorMsg(e.message || 'No se pudo guardar')
     } finally {
       setSaving(false)
-      setTimeout(()=>setSavedMsg(null), 2000)
+      setTimeout(() => setSavedMsg(null), 2000)
     }
   }
 
@@ -59,12 +75,16 @@ export default function RestaurantGeneral() {
     setSavedMsg(null); setErrorMsg(null)
     ;(async () => {
       try {
-        const res = await api<{business: any}>('/api/restaurant/settings', {}, token || undefined)
+        const res = await api<{ business: any }>(
+          '/api/restaurant/settings',
+          {},
+          token || undefined
+        )
         const b = res.business
         setMode((b.card_expiration_mode || 'none') as Mode)
         setFixedDate(b.card_expiration_date || '')
         setDaysFromSignup(b.card_expiration_days || 30)
-      } catch (e:any) {
+      } catch (e: any) {
         setErrorMsg(e.message || 'No se pudo recargar la configuración')
       }
     })()
@@ -187,7 +207,7 @@ export default function RestaurantGeneral() {
             className="border rounded-lg px-3 py-2 w-32"
             disabled={mode !== 'days_from_signup'}
             value={daysFromSignup}
-            onChange={(e)=>setDaysFromSignup(parseInt(e.target.value || '1'))}
+            onChange={(e)=>setDaysFromSignup(Math.max(1, parseInt(e.target.value || '1')))}
           />
           <span>días</span>
         </div>
