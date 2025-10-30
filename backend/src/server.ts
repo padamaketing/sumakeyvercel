@@ -29,21 +29,42 @@ export function createServer() {
 
   app.use(helmet())
 
-  // ───────────────── CORS robusto + preflight
-  const allowList = (process.env.CORS_ORIGINS || '')
+  // ───────────────── CORS robusto con soporte de regex/patrones
+  // Admite:
+  //   - valores exactos: https://sumakey.vercel.app
+  //   - regex: ^https:\/\/.*\.vercel\.app$
+  //   - también localhost en desarrollo
+  const raw = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean)
 
+  const allowMatchers = raw.map(s => {
+    // Si el valor comienza por ^ lo tratamos como RegExp
+    if (s.startsWith('^')) {
+      return new RegExp(s)
+    }
+    // Si viene entre /.../ también lo tratamos como RegExp
+    if (s.startsWith('/') && s.endsWith('/')) {
+      return new RegExp(s.slice(1, -1))
+    }
+    return s // string exacto
+  })
+
   const corsOptions: cors.CorsOptions = {
     origin(origin, cb) {
-      if (!origin) return cb(null, true)
-      if (allowList.length === 0 || allowList.includes(origin)) return cb(null, true)
+      if (!origin) return cb(null, true) // curl/postman
+      if (allowMatchers.length === 0) return cb(null, true)
+
+      const ok = allowMatchers.some(m =>
+        typeof m === 'string' ? m === origin : (m as RegExp).test(origin)
+      )
+      if (ok) return cb(null, true)
       return cb(new Error(`CORS blocked: ${origin}`), false)
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+    credentials: true,
   }
 
   app.use(cors(corsOptions))
@@ -57,8 +78,8 @@ export function createServer() {
   app.get('/api/debug/cors', (req, res) => {
     res.json({
       originReceived: req.headers.origin || null,
-      corsAllowedFrom: allowList,
-      message: 'Debug CORS OK (GET)'
+      corsAllowedFrom: raw,
+      message: 'Debug CORS OK (GET)',
     })
   })
 
@@ -110,7 +131,7 @@ export function createServer() {
     }
   })
 
-  // ───────────────── **NUEVO**: Auth ME (protegidísima)
+  // ───────────────── **NUEVO**: Auth ME (protegida)
   app.get('/api/auth/me', requireAuth as any, async (req: any, res) => {
     try {
       const businessId = req.user.businessId
