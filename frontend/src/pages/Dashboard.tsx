@@ -1,13 +1,21 @@
-// src/pages/Dashboard.tsx
+// frontend/src/pages/Dashboard.tsx
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../state/store'
 import { Link } from 'react-router-dom'
 
+type Client = {
+  id: string
+  stamps?: number
+  rewards_pending?: number
+}
+
 export default function Dashboard() {
-  const { token } = useAuth()
-  const [biz, setBiz] = useState<any>(null)
+  const { token, business, refreshMe } = useAuth()
+  const [biz, setBiz] = useState<any>(business)
   const [stats, setStats] = useState({ clients: 0, stamps: 0, rewards: 0 })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string>('')
 
   // ⬇️ Estado del acordeón "Restaurante" (persistente)
   const [restaurantOpen, setRestaurantOpen] = useState<boolean>(() => {
@@ -20,18 +28,57 @@ export default function Dashboard() {
     localStorage.setItem('sumakey:menu:restaurantOpen', next ? '1' : '0')
   }
 
+  // Carga de negocio + stats
   useEffect(() => {
-    (async () => {
-      const me = await api<{business:any}>('/api/auth/me', {}, token || undefined)
-      setBiz(me.business)
-      const list = await api<{clients:any[]}>('/api/business/clients', {}, token || undefined)
-      setStats({
-        clients: list.clients.length,
-        stamps: list.clients.reduce((a,c)=>a+(c.stamps||0),0),
-        rewards: list.clients.reduce((a,c)=>a+(c.rewards_pending||0),0)
-      })
-    })().catch(console.error)
-  }, [token])
+    let mounted = true
+    ;(async () => {
+      setLoading(true)
+      setError('')
+
+      try {
+        // 1) Asegura negocio
+        let currentBiz = business
+        if (!currentBiz && token) {
+          await refreshMe().catch(() => {})
+          currentBiz = (await api<{ business: any }>('/api/auth/me', {}, token)).business
+        } else if (!currentBiz && token) {
+          // fallback a /api/auth/me si el store no lo populó aún
+          currentBiz = (await api<{ business: any }>('/api/auth/me', {}, token)).business
+        }
+
+        if (mounted) setBiz(currentBiz)
+
+        // 2) Stats de clientes con fallback de endpoint
+        async function fetchStats() {
+          let list: Client[] = []
+          try {
+            const r1 = await api<{ clients: Client[] }>('/api/business/clients', {}, token || undefined)
+            list = r1.clients
+          } catch {
+            // fallback: algunos proyectos exponen /api/clients
+            const r2 = await api<{ clients: Client[] }>('/api/clients', {}, token || undefined)
+            list = r2.clients
+          }
+
+          const clients = list.length
+          const stamps = list.reduce((a, c) => a + (c.stamps || 0), 0)
+          const rewards = list.reduce((a, c) => a + (c.rewards_pending || 0), 0)
+          return { clients, stamps, rewards }
+        }
+
+        const s = await fetchStats()
+        if (mounted) setStats(s)
+      } catch (e: any) {
+        if (mounted) setError(e?.message || 'No se pudieron cargar los datos')
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    })()
+
+    return () => {
+      mounted = false
+    }
+  }, [token, business, refreshMe])
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6 grid md:grid-cols-[240px_1fr] gap-6">
@@ -62,9 +109,7 @@ export default function Dashboard() {
               <Link className="px-4 py-2 rounded-lg hover:bg-gray-100" to="/restaurante/programas">Programa</Link>
               <Link className="px-4 py-2 rounded-lg hover:bg-gray-100" to="/restaurante/landing">Landing de alta</Link>
               <Link className="px-4 py-2 rounded-lg hover:bg-gray-100" to="/restaurante/diseno">Diseño</Link>
-              {/* Eliminados: Enlaces / Textos */}
               <Link className="px-4 py-2 rounded-lg hover:bg-gray-100" to="/restaurante/qr-alta">QR de alta</Link>
-              {/* 👇 Pestaña: Histórico */}
               <Link className="px-4 py-2 rounded-lg hover:bg-gray-100" to="/restaurante/historial">Histórico</Link>
             </div>
           )}
@@ -76,8 +121,30 @@ export default function Dashboard() {
         </nav>
       </aside>
 
-      {/* Main KPIs + accesos rápidos */}
+      {/* Main */}
       <main className="grid gap-6">
+        {/* Encabezado negocio */}
+        <div className="p-4 rounded-2xl border bg-white">
+          <h2 className="text-xl font-semibold">
+            {loading ? 'Cargando negocio…' : (biz ? `Hola, ${biz.name}` : 'Negocio no disponible')}
+          </h2>
+          {biz?.slug && (
+            <div className="text-sm text-gray-500 mt-1">
+              Página pública:{' '}
+              <a
+                href={`/public/${biz.slug}`}
+                className="underline text-blue-600"
+                target="_blank"
+                rel="noreferrer"
+              >
+                /public/{biz.slug}
+              </a>
+            </div>
+          )}
+          {error && <div className="text-red-600 mt-2 text-sm break-all">{error}</div>}
+        </div>
+
+        {/* KPIs */}
         <div className="grid md:grid-cols-3 gap-4">
           <div className="p-4 rounded-2xl border bg-white">
             <div className="text-sm text-gray-500">Clientes</div>
@@ -93,6 +160,7 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Accesos rápidos */}
         {biz && (
           <div className="grid md:grid-cols-2 gap-4">
             <div className="p-4 rounded-2xl border bg-white">
