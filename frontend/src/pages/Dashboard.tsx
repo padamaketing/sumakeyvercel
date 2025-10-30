@@ -36,28 +36,30 @@ export default function Dashboard() {
       setError('')
 
       try {
-        if (!token) throw new Error('Sesión no disponible')
-
-        // 1) Asegura negocio (store -> /me)
+        // 1) Asegura negocio
         let currentBiz = business
-        if (!currentBiz) {
+        if (!currentBiz && token) {
           await refreshMe().catch(() => {})
-          currentBiz = (await api<{ business: any }>('/api/auth/me', {}, token)).business
+          currentBiz = (await api<{ business: any }>('/api/auth/me', {}, token || undefined)).business
+        } else if (!currentBiz && token) {
+          // fallback a /api/auth/me si el store no lo populó aún
+          currentBiz = (await api<{ business: any }>('/api/auth/me', {}, token || undefined)).business
         }
+
         if (mounted) setBiz(currentBiz)
 
-        // 2) Stats de clientes
-        //    👉 Primero /api/clients (existe en tu backend),
-        //       si no, fallback a /api/business/clients para entornos antiguos.
+        // 2) Stats de clientes con fallback de endpoint
         async function fetchStats() {
           let list: Client[] = []
           try {
-            const rOk = await api<{ clients: Client[] }>('/api/clients', {}, token)
-            list = rOk.clients
+            const r1 = await api<{ clients: Client[] }>('/api/business/clients', {}, token || undefined)
+            list = r1.clients
           } catch {
-            const rFallback = await api<{ clients: Client[] }>('/api/business/clients', {}, token)
-            list = rFallback.clients
+            // fallback: algunos proyectos exponen /api/clients
+            const r2 = await api<{ clients: Client[] }>('/api/clients', {}, token || undefined)
+            list = r2.clients
           }
+
           const clients = list.length
           const stamps = list.reduce((a, c) => a + (c.stamps || 0), 0)
           const rewards = list.reduce((a, c) => a + (c.rewards_pending || 0), 0)
@@ -86,7 +88,7 @@ export default function Dashboard() {
         <nav className="grid gap-1 text-sm">
           <Link className="px-3 py-2 rounded-lg hover:bg-gray-100" to="/tarjetas">Tarjetas</Link>
 
-        {/* --- Acordeón Restaurante --- */}
+          {/* --- Acordeón Restaurante --- */}
           <button
             onClick={toggleRestaurant}
             className="px-3 py-2 rounded-lg hover:bg-gray-100 text-left flex items-center justify-between"
@@ -111,7 +113,7 @@ export default function Dashboard() {
               <Link className="px-4 py-2 rounded-lg hover:bg-gray-100" to="/restaurante/historial">Histórico</Link>
             </div>
           )}
-        {/* --- Fin acordeón --- */}
+          {/* --- Fin acordeón --- */}
 
           <div className="px-3 py-2 text-gray-500 font-semibold">Clientes</div>
           <Link className="px-4 py-2 rounded-lg hover:bg-gray-100" to="/clientes">Ver clientes</Link>
