@@ -1,47 +1,40 @@
-// /frontend/src/lib/api.ts
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+export const BASE = import.meta.env.VITE_API_BASE;
 
-function buildUrl(path: string) {
-  if (path.startsWith('http')) return path;
-  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+function isPlainObject(v: any) {
+  return v != null && typeof v === 'object' &&
+         !(v instanceof FormData) && !(v instanceof Blob) && !(v instanceof ArrayBuffer);
 }
 
-export async function api<T = any>(
+export async function api(
   path: string,
-  opts: { method?: string; body?: any; headers?: Record<string, string> } = {},
-  token?: string | null
-): Promise<T> {
-  const { method = 'GET' } = opts;
-
-  // serializa body si es objeto
-  const hasBody = opts.body !== undefined && opts.body !== null;
-  const body =
-    hasBody && typeof opts.body !== 'string' ? JSON.stringify(opts.body) : opts.body;
-
-  const res = await fetch(buildUrl(path), {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(opts.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: hasBody ? body : undefined,
-    mode: 'cors',           // explícito
-    // ❌ nada de credentials si no usas cookies:
-    // credentials: 'include',
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    try {
-      const json = JSON.parse(text);
-      throw new Error(json?.error || text || `HTTP ${res.status}`);
-    } catch {
-      throw new Error(text || `HTTP ${res.status}`);
-    }
+  init: RequestInit = {},
+  token?: string
+) {
+  if (!BASE) {
+    // ayuda para detectar si VITE_API_BASE no entró en el build
+    console.error('VITE_API_BASE no está definido en build');
+  } else {
+    // puedes dejarlo temporalmente para depurar
+    console.debug('API BASE =>', BASE);
   }
 
-  const ct = res.headers.get('content-type') || '';
-  if (ct.includes('application/json')) return (await res.json()) as T;
-  return (await res.text()) as T;
+  const url = `${BASE}${path}`;
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(init.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+
+  // 🔒 si el body es un objeto plano, lo convertimos a JSON
+  const body =
+    isPlainObject((init as any).body) ? JSON.stringify((init as any).body) : (init as any).body;
+
+  const res = await fetch(url, { ...init, headers, body });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `HTTP ${res.status} on ${url}`);
+  }
+  return res.json();
 }
