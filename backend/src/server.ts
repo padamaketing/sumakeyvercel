@@ -29,18 +29,39 @@ export function createServer() {
 
   app.use(helmet())
 
-  // CORS según .env + preflight OPTIONS
-  const origins = (process.env.CORS_ORIGINS || '')
+  // ───────────────── CORS robusto + preflight
+  const allowList = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean)
-  const corsMiddleware = cors({ origin: origins.length ? origins : true })
-  app.use(corsMiddleware)
-  app.options('*', corsMiddleware)
 
-  // body grande (logo base64, etc.)
+  const corsOptions: cors.CorsOptions = {
+    origin(origin, cb) {
+      // Permite peticiones sin Origin (curl, health checks)
+      if (!origin) return cb(null, true)
+      if (allowList.length === 0 || allowList.includes(origin)) return cb(null, true)
+      return cb(new Error(`CORS blocked: ${origin}`), false)
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+  }
+
+  app.use(cors(corsOptions))
+  app.options('*', cors(corsOptions))
+
+  // ───────────────── Body parsers (antes de las rutas)
   app.use(express.json({ limit: '15mb' }))
   app.use(express.urlencoded({ limit: '15mb', extended: true }))
+
+  // ───────────────── Endpoint de diagnóstico CORS (temporal)
+  app.get('/api/debug/cors', (req, res) => {
+    res.json({
+      originReceived: req.headers.origin || null,
+      corsAllowedFrom: allowList,
+      message: 'Debug CORS OK (GET)'
+    })
+  })
 
   // ───────────────── Health
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
