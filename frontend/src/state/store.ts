@@ -97,7 +97,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     const token = get().token
     if (!token) return
     try {
-      const me = await api<{ business: Business }>('/api/auth/me', {}, token)
+      // ⬇️⬇️⬇️  FIX: GET explícito (antes hacía POST al pasar {})
+      const me = await api<{ business: Business }>('/api/auth/me', { method: 'GET' }, token)
       setStored('sumakey:business', me.business)
       set({ business: me.business })
     } catch {
