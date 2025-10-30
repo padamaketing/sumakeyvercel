@@ -1,13 +1,10 @@
+// frontend/src/pages/Login.tsx
 import { useState } from 'react'
-import { useAuth } from '../state/store'
-import { useNavigate } from 'react-router-dom'
-import logo from '../assets/logo-sumakey.png'
 import { api } from '../lib/api'
+import logo from '../assets/logo-sumakey.png'
+import bg from '../assets/bg-auth.png'
 
 export default function Login() {
-  const { refreshMe } = useAuth() // usamos refreshMe si existe
-  const navigate = useNavigate()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,29 +15,23 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      // ✅ POST explícito al backend
-      const res = await api<{ token: string; business?: any; error?: string }>(
+      // ✅ POST explícito a tu backend
+      const res = await api<{ token?: string; accessToken?: string; business?: any; error?: string }>(
         '/api/auth/login',
         { method: 'POST', body: { email: email.trim(), password } }
       )
 
-      if (!res || !res.token) {
-        throw new Error(res?.error || 'Respuesta inválida del servidor')
-      }
+      const token = res.token || res.accessToken
+      if (!token) throw new Error(res?.error || 'Login inválido')
 
-      // ✅ guardamos token para que el store/headers lo cojan
-      localStorage.setItem('token', res.token)
+      // ✅ Persistimos para que el resto de la app lo lea al recargar
+      localStorage.setItem('sumakey:token', token)
       if (res.business) {
         localStorage.setItem('sumakey:business', JSON.stringify(res.business))
       }
 
-      // ✅ intenta refrescar sesión en el store (si existe)
-      try {
-        await refreshMe?.()
-      } catch {}
-
-      // ✅ navega al dashboard
-      navigate('/dashboard', { replace: true })
+      // ✅ Redirección dura para evitar cualquier bucle/estado raro
+      window.location.href = '/dashboard'
     } catch (err: any) {
       setError(err?.message || 'Error al iniciar sesión')
     } finally {
@@ -51,12 +42,11 @@ export default function Login() {
   return (
     <div
       className="min-h-[calc(100vh-80px)] flex items-center justify-center bg-cover bg-center"
-      // 👇 si esta ruta falla en producción, cámbiala por un import y úsalo como <img src={bg} />
-      style={{ backgroundImage: `url('/src/assets/bg-auth.png')` }}
+      style={{ backgroundImage: `url(${bg})` }}
     >
       <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl p-8 w-full max-w-md">
         <div className="flex justify-center mb-6">
-          <img src={logo} alt="Sumakey" className="h-10 w-auto opacity-90" loading="lazy" />
+          <img src={logo} alt="Sumakey" className="h-10 w-auto opacity-90" loading="eager" />
         </div>
 
         <h1 className="text-2xl font-bold text-center mb-6">Iniciar sesión</h1>
@@ -70,6 +60,7 @@ export default function Login() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
           <input
             type="password"
@@ -78,13 +69,14 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="current-password"
           />
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-brand text-white py-2 rounded-lg hover:opacity-90 transition"
+            className="w-full bg-brand text-white py-2 rounded-lg hover:opacity-90 transition disabled:opacity-60"
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? 'Entrando…' : 'Entrar'}
           </button>
         </form>
       </div>

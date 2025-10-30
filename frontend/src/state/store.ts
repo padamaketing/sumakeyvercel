@@ -1,4 +1,3 @@
-// /frontend/src/state/store.ts
 import { create } from 'zustand'
 import { api } from '../lib/api'
 
@@ -31,7 +30,7 @@ type AuthState = {
   error: string | null
 
   register: (inputOrName: RegisterInput | string, email?: string, password?: string) => Promise<void>
-  login: (input: { email: string; password: string }) => Promise<void>
+  login: (input: { email: string; password: string }) => Promise<boolean>
   logout: () => void
   refreshMe: () => Promise<void>
 }
@@ -55,15 +54,18 @@ export const useAuth = create<AuthState>((set, get) => ({
         payload = { name: String(inputOrName || ''), email: String(email || ''), password: String(password || '') }
       }
 
-      const res = await api<{ token: string; business: Business }>(
+      const res = await api<{ token?: string; accessToken?: string; business: Business; error?: string }>(
         '/api/auth/register',
         { method: 'POST', body: payload }
       )
 
-      localStorage.setItem('sumakey:token', res.token)
+      const token = res.token || res.accessToken
+      if (!token) throw new Error(res.error || 'Registro inválido')
+
+      localStorage.setItem('sumakey:token', token)
       setStored('sumakey:business', res.business)
 
-      set({ token: res.token, business: res.business, loading: false })
+      set({ token, business: res.business, loading: false })
     } catch (e: any) {
       set({ loading: false, error: e?.message || 'No se pudo registrar' })
       throw e
@@ -73,17 +75,22 @@ export const useAuth = create<AuthState>((set, get) => ({
   async login({ email, password }) {
     set({ loading: true, error: null })
     try {
-      const res = await api<{ token: string; business: Business }>(
+      const res = await api<{ token?: string; accessToken?: string; business?: Business; error?: string }>(
         '/api/auth/login',
         { method: 'POST', body: { email, password } }
       )
-      localStorage.setItem('sumakey:token', res.token)
-      setStored('sumakey:business', res.business)
 
-      set({ token: res.token, business: res.business, loading: false })
+      const token = res.token || res.accessToken
+      if (!token) throw new Error(res.error || 'Login inválido')
+
+      localStorage.setItem('sumakey:token', token)
+      if (res.business) setStored('sumakey:business', res.business)
+
+      set({ token, business: res.business || null, loading: false })
+      return true
     } catch (e: any) {
       set({ loading: false, error: e?.message || 'No se pudo iniciar sesión' })
-      throw e
+      return false
     }
   },
 
@@ -97,7 +104,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     const token = get().token
     if (!token) return
     try {
-      // ⬇️⬇️⬇️  FIX: GET explícito (antes hacía POST al pasar {})
+      // GET explícito
       const me = await api<{ business: Business }>('/api/auth/me', { method: 'GET' }, token)
       setStored('sumakey:business', me.business)
       set({ business: me.business })
