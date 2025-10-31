@@ -30,28 +30,21 @@ export function createServer() {
   app.use(helmet())
 
   // ───────────────── CORS robusto con soporte de regex/patrones
-  // Admite:
-  //   - valores exactos: https://sumakey.vercel.app
-  //   - regex: ^https:\/\/.*\.vercel\.app$
-  //   - también localhost en desarrollo
   const raw = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean)
 
   const allowMatchers = raw.map(s => {
-    // Si el valor comienza por ^ lo tratamos como RegExp
     if (s.startsWith('^')) return new RegExp(s)
-    // Si viene entre /.../ también lo tratamos como RegExp
     if (s.startsWith('/') && s.endsWith('/')) return new RegExp(s.slice(1, -1))
-    return s // string exacto
+    return s
   })
 
   const corsOptions: cors.CorsOptions = {
     origin(origin, cb) {
-      if (!origin) return cb(null, true) // curl/postman
+      if (!origin) return cb(null, true)
       if (allowMatchers.length === 0) return cb(null, true)
-
       const ok = allowMatchers.some(m =>
         typeof m === 'string' ? m === origin : (m as RegExp).test(origin)
       )
@@ -66,11 +59,11 @@ export function createServer() {
   app.use(cors(corsOptions))
   app.options('*', cors(corsOptions))
 
-  // ───────────────── Body parsers (antes de las rutas)
+  // ───────────────── Body parsers
   app.use(express.json({ limit: '15mb' }))
   app.use(express.urlencoded({ limit: '15mb', extended: true }))
 
-  // ───────────────── Endpoint de diagnóstico CORS (temporal)
+  // ───────────────── Endpoint de diagnóstico CORS
   app.get('/api/debug/cors', (req, res) => {
     res.json({
       originReceived: req.headers.origin || null,
@@ -314,6 +307,73 @@ export function createServer() {
     )
 
     res.json({ ok: true, program: rows[0] })
+  })
+
+  // ─────────────────────────────
+  // ALIAS DUROS para clientes y KPIs (usan requireAuth)
+  // ─────────────────────────────
+
+  // Listado de clientes del negocio autenticado
+  app.get('/api/business/clients', requireAuth as any, async (req: any, res) => {
+    try {
+      const businessId = req.user.businessId
+      const { rows } = await query(
+        `
+        SELECT c.id, c.name, c.email, c.phone,
+               m.stamps, m.rewards_pending, m.last_scan_at
+          FROM public.memberships m
+          JOIN public.clients c ON c.id = m.client_id
+         WHERE m.business_id = $1
+         ORDER BY c.name ASC
+        `,
+        [businessId]
+      )
+      res.json({ clients: rows })
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'clients error' })
+    }
+  })
+
+  // Alias compatible: /api/clients
+  app.get('/api/clients', requireAuth as any, async (req: any, res) => {
+    try {
+      const businessId = req.user.businessId
+      const { rows } = await query(
+        `
+        SELECT c.id, c.name, c.email, c.phone,
+               m.stamps, m.rewards_pending, m.last_scan_at
+          FROM public.memberships m
+          JOIN public.clients c ON c.id = m.client_id
+         WHERE m.business_id = $1
+         ORDER BY c.name ASC
+        `,
+        [businessId]
+      )
+      res.json({ clients: rows })
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'clients error' })
+    }
+  })
+
+  // KPIs compactos del dashboard
+  app.get('/api/stats/overview', requireAuth as any, async (req: any, res) => {
+    try {
+      const businessId = req.user.businessId
+      const { rows } = await query(
+        `
+        SELECT
+          COUNT(*)::int AS clients,
+          COALESCE(SUM(m.stamps), 0)::int AS stamps,
+          COALESCE(SUM(m.rewards_pending), 0)::int AS rewards
+        FROM public.memberships m
+        WHERE m.business_id = $1
+        `,
+        [businessId]
+      )
+      res.json({ stats: rows[0] ?? { clients: 0, stamps: 0, rewards: 0 } })
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'stats error' })
+    }
   })
 
   // ───────────────── 404
