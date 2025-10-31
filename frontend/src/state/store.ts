@@ -32,7 +32,7 @@ type AuthState = {
   register: (inputOrName: RegisterInput | string, email?: string, password?: string) => Promise<void>
   login: (input: { email: string; password: string }) => Promise<boolean>
   logout: () => void
-  refreshMe: () => Promise<void>
+  refreshMe: (force?: boolean) => Promise<void>   // ⬅️ ahora admite "force"
 }
 
 const initialToken = typeof window !== 'undefined' ? localStorage.getItem('sumakey:token') : null
@@ -100,14 +100,25 @@ export const useAuth = create<AuthState>((set, get) => ({
     set({ token: null, business: null })
   },
 
-  async refreshMe() {
-    const token = get().token
-    if (!token) return
+  // 🔧 REFRESCO MEJORADO
+  async refreshMe(force = false) {
+    let token = get().token
+    if (!token) {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('sumakey:token') : null
+      if (stored) {
+        token = stored
+        set({ token })
+      } else if (!force) {
+        return
+      }
+    }
+
     try {
-      // GET explícito
-      const me = await api<{ business: Business }>('/api/auth/me', { method: 'GET' }, token)
-      setStored('sumakey:business', me.business)
-      set({ business: me.business })
+      const me = await api<{ business: Business }>('/api/auth/me', { method: 'GET' }, token || undefined)
+      if (me?.business) {
+        setStored('sumakey:business', me.business)
+        set({ business: me.business })
+      }
     } catch {
       localStorage.removeItem('sumakey:token')
       localStorage.removeItem('sumakey:business')
