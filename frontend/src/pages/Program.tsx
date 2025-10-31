@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useAuth } from '../state/store' // ⬅️ añadido para usar el token
 
 type Program = {
   reward_threshold?: number | null
@@ -9,6 +10,8 @@ type Program = {
 }
 
 export default function Program() {
+  const { token, refreshMe } = useAuth() // ⬅️ obtenemos token + refreshMe
+
   const [program, setProgram] = useState<Program>({
     reward_threshold: 5,
     reward_name: 'Café gratis',
@@ -21,12 +24,14 @@ export default function Program() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!token) return // ⬅️ evita petición sin token
     let mounted = true
     ;(async () => {
       try {
         setLoading(true)
         setError(null)
-        const res = await api<{ program: Program }>('/api/restaurant/program', { method: 'GET' })
+        // ⬇️ token añadido
+        const res = await api<{ program: Program }>('/api/restaurant/program', { method: 'GET' }, token)
         if (!mounted) return
         if (res?.program) setProgram(res.program)
       } catch (e: any) {
@@ -37,16 +42,16 @@ export default function Program() {
       }
     })()
     return () => { mounted = false }
-  }, [])
+  }, [token])
 
   async function refreshBusinessCache() {
     try {
-      // Traemos el negocio actualizado y lo guardamos para que el Dashboard
-      // muestre el nuevo reward_threshold/reward_name sin inconsistencias
-      const me = await api<{ business: any }>('/api/auth/me', { method: 'GET' })
+      // ⬇️ token añadido
+      const me = await api<{ business: any }>('/api/auth/me', { method: 'GET' }, token)
       if (me?.business) {
         localStorage.setItem('sumakey:business', JSON.stringify(me.business))
       }
+      await refreshMe() // 🔄 fuerza actualización global del estado
     } catch {
       /* si falla, simplemente no refrescamos cache */
     }
@@ -56,12 +61,14 @@ export default function Program() {
     setSaving(true)
     setMsg(null)
     try {
+      // ⬇️ token añadido
       const r = await api<{ ok: boolean; program: Program }>(
         '/api/restaurant/program',
-        { method: 'POST', body: program }
+        { method: 'POST', body: program },
+        token
       )
       if (r?.program) setProgram(r.program)
-      await refreshBusinessCache() // 🔄 clave para que el dashboard refleje los nuevos valores
+      await refreshBusinessCache() // 🔄 actualiza dashboard automáticamente
       setMsg('Programa guardado')
     } catch (e: any) {
       setMsg(e?.message || 'No se pudo guardar')
