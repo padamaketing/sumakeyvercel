@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import { useAuth } from '../state/store' // ⬅️ añadido para usar el token
+import { useAuth } from '../state/store' // ⬅️ usamos token y refreshMe global
 
 type Program = {
   reward_threshold?: number | null
@@ -10,7 +10,7 @@ type Program = {
 }
 
 export default function Program() {
-  const { token, refreshMe } = useAuth() // ⬅️ obtenemos token + refreshMe
+  const { token, refreshMe } = useAuth()
 
   const [program, setProgram] = useState<Program>({
     reward_threshold: 5,
@@ -24,14 +24,14 @@ export default function Program() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!token) return // ⬅️ evita petición sin token
+    if (!token) return
     let mounted = true
     ;(async () => {
       try {
         setLoading(true)
         setError(null)
-        // ⬇️ token añadido
-        const res = await api<{ program: Program }>('/api/restaurant/program', { method: 'GET' }, token)
+        // 🔧 añadimos token || undefined para tipos correctos
+        const res = await api<{ program: Program }>('/api/restaurant/program', { method: 'GET' }, token || undefined)
         if (!mounted) return
         if (res?.program) setProgram(res.program)
       } catch (e: any) {
@@ -46,8 +46,8 @@ export default function Program() {
 
   async function refreshBusinessCache() {
     try {
-      // ⬇️ token añadido
-      const me = await api<{ business: any }>('/api/auth/me', { method: 'GET' }, token)
+      // 🔧 token || undefined para tipado correcto
+      const me = await api<{ business: any }>('/api/auth/me', { method: 'GET' }, token || undefined)
       if (me?.business) {
         localStorage.setItem('sumakey:business', JSON.stringify(me.business))
       }
@@ -61,11 +61,11 @@ export default function Program() {
     setSaving(true)
     setMsg(null)
     try {
-      // ⬇️ token añadido
+      // 🔧 token || undefined aquí también
       const r = await api<{ ok: boolean; program: Program }>(
         '/api/restaurant/program',
         { method: 'POST', body: program },
-        token
+        token || undefined
       )
       if (r?.program) setProgram(r.program)
       await refreshBusinessCache() // 🔄 actualiza dashboard automáticamente
