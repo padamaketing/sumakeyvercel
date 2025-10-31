@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import { useAuth } from '../state/store' // ⬅️ usamos token y refreshMe global
+import { useAuth } from '../state/store'
 
 type Program = {
   reward_threshold?: number | null
@@ -10,7 +10,9 @@ type Program = {
 }
 
 export default function Program() {
-  const { token, refreshMe } = useAuth()
+  // Usa selectores para evitar re-renders innecesarios y tipos claros
+  const token = useAuth(s => s.token)
+  const refreshMe = useAuth(s => s.refreshMe)
 
   const [program, setProgram] = useState<Program>({
     reward_threshold: 5,
@@ -30,8 +32,11 @@ export default function Program() {
       try {
         setLoading(true)
         setError(null)
-        // 🔧 añadimos token || undefined para tipos correctos
-        const res = await api<{ program: Program }>('/api/restaurant/program', { method: 'GET' }, token || undefined)
+        const res = await api<{ program: Program }>(
+          '/api/restaurant/program',
+          { method: 'GET' },
+          token || undefined
+        )
         if (!mounted) return
         if (res?.program) setProgram(res.program)
       } catch (e: any) {
@@ -45,30 +50,35 @@ export default function Program() {
   }, [token])
 
   async function refreshBusinessCache() {
+    if (!token) return
     try {
-      // 🔧 token || undefined para tipado correcto
-      const me = await api<{ business: any }>('/api/auth/me', { method: 'GET' }, token || undefined)
+      const me = await api<{ business: any }>(
+        '/api/auth/me',
+        { method: 'GET' },
+        token || undefined
+      )
       if (me?.business) {
         localStorage.setItem('sumakey:business', JSON.stringify(me.business))
       }
-      await refreshMe() // 🔄 fuerza actualización global del estado
+      // Esto actualiza el store (y el Dashboard re-renderiza con el nuevo threshold)
+      await refreshMe()
     } catch {
-      /* si falla, simplemente no refrescamos cache */
+      // silencioso
     }
   }
 
   const save = async () => {
+    if (!token) return
     setSaving(true)
     setMsg(null)
     try {
-      // 🔧 token || undefined aquí también
       const r = await api<{ ok: boolean; program: Program }>(
         '/api/restaurant/program',
         { method: 'POST', body: program },
         token || undefined
       )
       if (r?.program) setProgram(r.program)
-      await refreshBusinessCache() // 🔄 actualiza dashboard automáticamente
+      await refreshBusinessCache()
       setMsg('Programa guardado')
     } catch (e: any) {
       setMsg(e?.message || 'No se pudo guardar')
@@ -77,6 +87,13 @@ export default function Program() {
       setTimeout(() => setMsg(null), 2500)
     }
   }
+
+  // Helpers para evitar pasar null/undefined a los inputs (TS rojo)
+  const rewardName = program.reward_name ?? ''
+  const rewardThreshold =
+    Number.isFinite(program.reward_threshold ?? 1) ? (program.reward_threshold as number) : 1
+  const rewardCode = program.reward_product_code ?? ''
+  const rewardDesc = program.reward_description ?? ''
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-6">
@@ -92,26 +109,33 @@ export default function Program() {
             <label className="text-sm font-medium">Nombre de la recompensa</label>
             <input
               className="border rounded-lg px-3 py-2 w-full"
-              value={program.reward_name || ''}
+              value={rewardName}
               onChange={(e) => setProgram((p) => ({ ...p, reward_name: e.target.value }))}
             />
           </div>
+
           <div>
             <label className="text-sm font-medium">Sellos necesarios</label>
             <input
               type="number"
               min={1}
               className="border rounded-lg px-3 py-2 w-full"
-              value={program.reward_threshold ?? 1}
-              onChange={(e) => setProgram((p) => ({ ...p, reward_threshold: Number(e.target.value) || 1 }))}
+              value={rewardThreshold}
+              onChange={(e) =>
+                setProgram((p) => ({
+                  ...p,
+                  reward_threshold: Math.max(1, Number(e.target.value) || 1),
+                }))
+              }
             />
           </div>
+
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Código producto (opcional)</label>
               <input
                 className="border rounded-lg px-3 py-2 w-full"
-                value={program.reward_product_code || ''}
+                value={rewardCode}
                 onChange={(e) => setProgram((p) => ({ ...p, reward_product_code: e.target.value }))}
               />
             </div>
@@ -119,7 +143,7 @@ export default function Program() {
               <label className="text-sm font-medium">Descripción (opcional)</label>
               <input
                 className="border rounded-lg px-3 py-2 w-full"
-                value={program.reward_description || ''}
+                value={rewardDesc}
                 onChange={(e) => setProgram((p) => ({ ...p, reward_description: e.target.value }))}
               />
             </div>
