@@ -41,13 +41,9 @@ export function createServer() {
 
   const allowMatchers = raw.map(s => {
     // Si el valor comienza por ^ lo tratamos como RegExp
-    if (s.startsWith('^')) {
-      return new RegExp(s)
-    }
+    if (s.startsWith('^')) return new RegExp(s)
     // Si viene entre /.../ también lo tratamos como RegExp
-    if (s.startsWith('/') && s.endsWith('/')) {
-      return new RegExp(s.slice(1, -1))
-    }
+    if (s.startsWith('/') && s.endsWith('/')) return new RegExp(s.slice(1, -1))
     return s // string exacto
   })
 
@@ -108,6 +104,46 @@ export function createServer() {
       res.json({ ok: true, tables: rows[0] })
     } catch (e: any) {
       res.status(500).json({ ok: false, error: e?.message || 'db error' })
+    }
+  })
+
+  // ───────────────── DEBUG: quién soy y memberships por negocio
+  app.get('/api/debug/memberships', requireAuth as any, async (req: any, res) => {
+    try {
+      const myBusinessId = req.user.businessId
+
+      const me = await query(
+        `select id, name, email, slug from public.businesses where id = $1`,
+        [myBusinessId]
+      )
+
+      const counts = await query(`
+        select m.business_id, count(*)::int as n
+          from public.memberships m
+         group by m.business_id
+         order by n desc
+      `)
+
+      const sample = await query(`
+        select m.business_id,
+               c.id   as client_id,
+               c.name as client_name,
+               m.stamps,
+               coalesce(m.rewards,0) as rewards
+          from public.memberships m
+          join public.clients c on c.id = m.client_id
+         order by m.created_at desc
+         limit 10
+      `)
+
+      res.json({
+        myBusinessId,
+        me: me.rows?.[0] || null,
+        membershipCounts: counts.rows,
+        sampleMemberships: sample.rows,
+      })
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'debug error' })
     }
   })
 
